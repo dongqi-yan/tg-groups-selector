@@ -1,11 +1,12 @@
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetDialogsRequest
-from telethon.tl.types import InputPeerEmpty
+from telethon.tl.types import InputPeerEmpty, Chat, Channel
+from pick import pick
 
 # Configure your Telegram API credentials
-api_id = 'YOUR API_ID'  # Replace with your api_id
-api_hash = 'YOUR API_HASH'  # Replace with your api_hash
-phone = 'YOUR PHONE NUMBER'  # e.g., +861234567890
+api_id = '__'  # Replace with your api_id
+api_hash = '__'  # Replace with your api_hash
+phone = '__'  # e.g., +861234567890
 
 # Initialize Telegram client
 client = TelegramClient(phone, api_id, api_hash)
@@ -32,19 +33,36 @@ def main():
             group_list.append(dialog)
             print(f"{i + 1}. {dialog.title} (ID: {dialog.id})")
 
-    # User selects groups to leave
-    selected = input("\nPlease enter the group numbers to leave (separated by commas, e.g., 1,3,5):")
-    selected_indices = [int(x.strip()) - 1 for x in selected.split(',') if x.strip().isdigit()]
+    if not group_list:
+        print("No groups found.")
+        client.disconnect()
+        return
+    
+    # Use pick for interactive multi-selection
+    title = "Please select the groups to leave (use arrow keys to move, space to select, Enter to confirm):"
+    options = [f"{dialog.title} (ID: {dialog.id})" for dialog in group_list]
+    selected = pick(options, title, multiselect=True, min_selection_count=1)
 
     # Execute leave operation
-    for idx in selected_indices:
-        if 0 <= idx < len(group_list):
-            group = group_list[idx]
-            print(f"Leaving: {group.title}")
-            client.delete_dialog(group.id)
-            print(f"Left: {group.title}")
+    for option, idx in selected:
+        group = group_list[idx]
+        print(f"Leaving: {group.title}")
+        try:
+            if isinstance(group, Channel):
+                from telethon.tl.functions.channels import LeaveChannelRequest
+                client(LeaveChannelRequest(group))
+                try:
+                    client.delete_dialog(group.id)
+                except Exception as del_ex:
+                    print(f"Failed to delete dialog for {group.title}: {del_ex}")
+            elif isinstance(group, Chat):
+                client.delete_dialog(group.id)
+            else:
+                print("Unsupported group type")
+        except Exception as e:
+            print(f"Failed to leave {group.title}: {e}")
         else:
-            print(f"Invalid number: {idx + 1}")
+            print(f"Left: {group.title}")
 
     print("Operation completed!")
     client.disconnect()
